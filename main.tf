@@ -1,6 +1,6 @@
 resource "azurerm_kubernetes_cluster" "k8s" {
   location            = "West Europe"
-  name                = "aks123423"
+  name                = "aks12342344"
   resource_group_name = "test1"
   dns_prefix          = "dns"
 
@@ -19,3 +19,4 @@ resource "azurerm_kubernetes_cluster" "k8s" {
     load_balancer_sku = "standard"
   }
 }
+
