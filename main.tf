@@ -1,7 +1,9 @@
 #################################
-# PROVIDER
+# TERRAFORM SETTINGS
 #################################
 terraform {
+  required_version = ">= 1.3.0"
+
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
@@ -10,6 +12,9 @@ terraform {
   }
 }
 
+#################################
+# PROVIDER
+#################################
 provider "azurerm" {
   features {}
 }
@@ -270,6 +275,7 @@ resource "azurerm_container_group" "aci" {
     "Cost Center"   = "1234"
   }
 }
+
 
 
 
