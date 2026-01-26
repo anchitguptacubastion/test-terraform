@@ -217,7 +217,7 @@ resource "azurerm_postgresql_flexible_server" "psql" {
   delegated_subnet_id    = azurerm_subnet.psql.id
   private_dns_zone_id    = azurerm_private_dns_zone.psql.id
   administrator_login    = "pgadmin"
-  administrator_password = var.psql_admin_password
+  administrator_password = "Password@123!"
   sku_name               = "B_Standard_B1ms"
   storage_mb             = 32768
   tags                   = local.tags
@@ -247,3 +247,4 @@ resource "azurerm_key_vault" "kv" {
     secret_permissions = ["Get", "Set", "List"]
   }
 }
+
