@@ -7,10 +7,11 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 3.75" # make sure it's 3.x or higher
     }
   }
 }
+
 
 #################################
 # PROVIDER
@@ -275,6 +276,7 @@ resource "azurerm_container_group" "aci" {
     "Cost Center"   = "1234"
   }
 }
+
 
 
 
