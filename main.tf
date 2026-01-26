@@ -3,11 +3,6 @@
 #################################
 provider "azurerm" {
   features {}
-
-  subscription_id = var.subscription_id
-  tenant_id       = var.tenant_id
-  client_id       = var.client_id
-  client_secret   = var.client_secret
 }
 
 data "azurerm_client_config" "current" {}
@@ -15,10 +10,6 @@ data "azurerm_client_config" "current" {}
 #################################
 # VARIABLES
 #################################
-variable "subscription_id" {}
-variable "tenant_id" {}
-variable "client_id" {}
-variable "client_secret" {}
 
 variable "resource_group_name" {}
 variable "location" {
@@ -89,19 +80,19 @@ resource "azurerm_policy_definition" "allowed_locations" {
 resource "azurerm_policy_assignment" "mandatory_tags" {
   name                 = "mandatory-tags-assignment"
   policy_definition_id = azurerm_policy_definition.mandatory_tags.id
-  scope                = "/subscriptions/${var.subscription_id}"
+  scope                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
 }
 
 resource "azurerm_policy_assignment" "deny_public_ip" {
   name                 = "deny-public-ip-nic-assignment"
   policy_definition_id = azurerm_policy_definition.deny_public_ip_nic.id
-  scope                = "/subscriptions/${var.subscription_id}"
+  scope                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
 }
 
 resource "azurerm_policy_assignment" "allowed_locations" {
   name                 = "allowed-locations-assignment"
   policy_definition_id = azurerm_policy_definition.allowed_locations.id
-  scope                = "/subscriptions/${var.subscription_id}"
+  scope                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
 }
 
 #################################
@@ -164,13 +155,13 @@ resource "azurerm_key_vault" "kv" {
   name                        = "kv-devops-demo"
   location                    = var.location
   resource_group_name         = var.resource_group_name
-  tenant_id                   = var.tenant_id
+  tenant_id                   = data.azurerm_client_config.current.tenant_id
   sku_name                    = "standard"
   purge_protection_enabled    = true
   soft_delete_retention_days  = 7
 
   access_policy {
-    tenant_id = var.tenant_id
+    tenant_id = data.azurerm_client_config.current.tenant_id
     object_id = data.azurerm_client_config.current.object_id
 
     secret_permissions = ["Get", "Set", "List"]
@@ -270,3 +261,4 @@ resource "azurerm_container_group" "aci" {
     "Cost Center"   = "1234"
   }
 }
+
