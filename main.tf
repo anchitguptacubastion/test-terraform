@@ -89,25 +89,25 @@ resource "azurerm_policy_definition" "allowed_locations" {
 }
 
 #################################
-# POLICY ASSIGNMENTS
+# POLICY ASSIGNMENTS (Subscription Scope)
 #################################
 
-resource "azurerm_policy_assignment" "mandatory_tags" {
+resource "azurerm_subscription_policy_assignment" "mandatory_tags" {
   name                 = "mandatory-tags-assignment"
   policy_definition_id = azurerm_policy_definition.mandatory_tags.id
-  scope                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+  subscription_id      = data.azurerm_client_config.current.subscription_id
 }
 
-resource "azurerm_policy_assignment" "deny_public_ip" {
+resource "azurerm_subscription_policy_assignment" "deny_public_ip" {
   name                 = "deny-public-ip-nic-assignment"
   policy_definition_id = azurerm_policy_definition.deny_public_ip_nic.id
-  scope                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+  subscription_id      = data.azurerm_client_config.current.subscription_id
 }
 
-resource "azurerm_policy_assignment" "allowed_locations" {
+resource "azurerm_subscription_policy_assignment" "allowed_locations" {
   name                 = "allowed-locations-assignment"
   policy_definition_id = azurerm_policy_definition.allowed_locations.id
-  scope                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+  subscription_id      = data.azurerm_client_config.current.subscription_id
 }
 
 #################################
@@ -119,6 +119,7 @@ resource "azurerm_container_registry" "acr" {
   location            = var.location
   sku                 = "Premium"
   admin_enabled       = false
+
   tags = {
     "Business Unit" = "IT"
     "Cost Center"   = "1234"
@@ -126,19 +127,23 @@ resource "azurerm_container_registry" "acr" {
 }
 
 #################################
-# AKS (PRIVATE)
+# VNET (for AKS, ACI, PSQL)
 #################################
 resource "azurerm_virtual_network" "vnet" {
   name                = "core-vnet"
   location            = var.location
   resource_group_name = var.resource_group_name
   address_space       = ["10.0.0.0/16"]
+
   tags = {
     "Business Unit" = "IT"
     "Cost Center"   = "1234"
   }
 }
 
+#################################
+# AKS (Private Cluster)
+#################################
 resource "azurerm_subnet" "aks" {
   name                 = "aks-subnet"
   resource_group_name  = var.resource_group_name
@@ -175,7 +180,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
 }
 
 #################################
-# ACI (VNET INTEGRATED)
+# ACI
 #################################
 resource "azurerm_subnet" "aci" {
   name                 = "aci-subnet"
@@ -210,13 +215,14 @@ resource "azurerm_container_group" "aci" {
 }
 
 #################################
-# POSTGRES FLEXIBLE SERVER
+# PSQL Flexible Server
 #################################
 resource "azurerm_subnet" "psql" {
   name                 = "psql-subnet"
   resource_group_name  = var.resource_group_name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.0.3.0/24"]
+
   delegation {
     name = "psql"
     service_delegation {
@@ -250,7 +256,7 @@ resource "azurerm_postgresql_flexible_server_database" "employee_db" {
 }
 
 #################################
-# AZURE KEY VAULT
+# Azure Key Vault
 #################################
 resource "azurerm_key_vault" "kv" {
   name                        = "kv-devops-demo"
