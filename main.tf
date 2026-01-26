@@ -37,9 +37,6 @@ variable "resource_group_name" {}
 variable "location" {
   default = "Central India"
 }
-variable "psql_admin_password" {
-  sensitive = true
-}
 
 #################################
 # EXISTING POLICIES (DATA ONLY)
@@ -247,4 +244,5 @@ resource "azurerm_key_vault" "kv" {
     secret_permissions = ["Get", "Set", "List"]
   }
 }
+
 
