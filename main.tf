@@ -7,11 +7,10 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.75" # make sure it's 3.x or higher
+      version = "=4.1.0"
     }
   }
 }
-
 
 #################################
 # PROVIDER
@@ -25,8 +24,10 @@ data "azurerm_client_config" "current" {}
 #################################
 # VARIABLES
 #################################
+variable "resource_group_name" {
+  description = "Existing resource group name"
+}
 
-variable "resource_group_name" {}
 variable "location" {
   default = "Central India"
 }
@@ -35,11 +36,11 @@ variable "location" {
 # POLICY DEFINITIONS
 #################################
 
-# Mandatory Tags
+# 1. Mandatory Tags
 resource "azurerm_policy_definition" "mandatory_tags" {
   name         = "mandatory-tags"
-  policy_type = "Custom"
-  mode        = "Indexed"
+  policy_type  = "Custom"
+  mode         = "Indexed"
   display_name = "Require Business Unit and Cost Center tags"
 
   policy_rule = jsonencode({
@@ -53,11 +54,11 @@ resource "azurerm_policy_definition" "mandatory_tags" {
   })
 }
 
-# No Public IP on NIC
+# 2. No Public IP on NIC
 resource "azurerm_policy_definition" "deny_public_ip_nic" {
   name         = "deny-public-ip-nic"
-  policy_type = "Custom"
-  mode        = "All"
+  policy_type  = "Custom"
+  mode         = "All"
   display_name = "Deny Public IP on NIC"
 
   policy_rule = jsonencode({
@@ -71,19 +72,17 @@ resource "azurerm_policy_definition" "deny_public_ip_nic" {
   })
 }
 
-# Allowed Locations
+# 3. Allowed Locations
 resource "azurerm_policy_definition" "allowed_locations" {
   name         = "allowed-locations"
-  policy_type = "Custom"
-  mode        = "All"
+  policy_type  = "Custom"
+  mode         = "All"
   display_name = "Allowed Locations Policy"
 
   policy_rule = jsonencode({
     if = {
-      not = {
-        field = "location"
-        in = ["centralindia", "southindia"]
-      }
+      field = "location"
+      notIn = ["Central India", "South India"]
     }
     then = { effect = "deny" }
   })
@@ -92,6 +91,7 @@ resource "azurerm_policy_definition" "allowed_locations" {
 #################################
 # POLICY ASSIGNMENTS
 #################################
+
 resource "azurerm_policy_assignment" "mandatory_tags" {
   name                 = "mandatory-tags-assignment"
   policy_definition_id = azurerm_policy_definition.mandatory_tags.id
@@ -111,14 +111,28 @@ resource "azurerm_policy_assignment" "allowed_locations" {
 }
 
 #################################
-# VNET
+# ACR
+#################################
+resource "azurerm_container_registry" "acr" {
+  name                = "acrdevopsdemo123"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  sku                 = "Premium"
+  admin_enabled       = false
+  tags = {
+    "Business Unit" = "IT"
+    "Cost Center"   = "1234"
+  }
+}
+
+#################################
+# AKS (PRIVATE)
 #################################
 resource "azurerm_virtual_network" "vnet" {
   name                = "core-vnet"
   location            = var.location
   resource_group_name = var.resource_group_name
   address_space       = ["10.0.0.0/16"]
-
   tags = {
     "Business Unit" = "IT"
     "Cost Center"   = "1234"
@@ -132,100 +146,11 @@ resource "azurerm_subnet" "aks" {
   address_prefixes     = ["10.0.1.0/24"]
 }
 
-resource "azurerm_subnet" "aci" {
-  name                 = "aci-subnet"
-  resource_group_name  = var.resource_group_name
-  virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefixes     = ["10.0.2.0/24"]
-}
-
-resource "azurerm_subnet" "psql" {
-  name                 = "psql-subnet"
-  resource_group_name  = var.resource_group_name
-  virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefixes     = ["10.0.3.0/24"]
-  delegation {
-    name = "psql"
-    service_delegation {
-      name = "Microsoft.DBforPostgreSQL/flexibleServers"
-    }
-  }
-}
-
-#################################
-# ACR
-#################################
-resource "azurerm_container_registry" "acr" {
-  name                = "acrdevopsdemo123"
-  resource_group_name = var.resource_group_name
-  location            = var.location
-  sku                 = "Premium"
-  admin_enabled       = false
-}
-
-#################################
-# KEY VAULT
-#################################
-resource "azurerm_key_vault" "kv" {
-  name                        = "kv-devops-demo"
-  location                    = var.location
-  resource_group_name         = var.resource_group_name
-  tenant_id                   = data.azurerm_client_config.current.tenant_id
-  sku_name                    = "standard"
-  purge_protection_enabled    = true
-  soft_delete_retention_days  = 7
-
-  access_policy {
-    tenant_id = data.azurerm_client_config.current.tenant_id
-    object_id = data.azurerm_client_config.current.object_id
-
-    secret_permissions = ["Get", "Set", "List"]
-  }
-
-  tags = {
-    "Business Unit" = "IT"
-    "Cost Center"   = "1234"
-  }
-}
-
-#################################
-# POSTGRES FLEXIBLE SERVER
-#################################
-resource "azurerm_postgresql_flexible_server" "psql" {
-  name                   = "employee-psql"
-  resource_group_name    = var.resource_group_name
-  location               = var.location
-  version                = "16"
-  delegated_subnet_id    = azurerm_subnet.psql.id
-  private_dns_zone_id    = null
-  administrator_login    = "pgadmin"
-  administrator_password = "Password@123!"
-
-  storage_mb = 32768
-  sku_name   = "B_Standard_B1ms"
-
-  tags = {
-    "Business Unit" = "IT"
-    "Cost Center"   = "1234"
-  }
-}
-
-resource "azurerm_postgresql_flexible_server_database" "employee_db" {
-  name      = "employee"
-  server_id = azurerm_postgresql_flexible_server.psql.id
-  charset   = "UTF8"
-  collation = "en_US.utf8"
-}
-
-#################################
-# AKS (PRIVATE)
-#################################
 resource "azurerm_kubernetes_cluster" "aks" {
   name                = "private-aks"
   location            = var.location
   resource_group_name = var.resource_group_name
   dns_prefix          = "privateaks"
-
   private_cluster_enabled = true
 
   default_node_pool {
@@ -252,6 +177,13 @@ resource "azurerm_kubernetes_cluster" "aks" {
 #################################
 # ACI (VNET INTEGRATED)
 #################################
+resource "azurerm_subnet" "aci" {
+  name                 = "aci-subnet"
+  resource_group_name  = var.resource_group_name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.2.0/24"]
+}
+
 resource "azurerm_container_group" "aci" {
   name                = "employee-aci"
   location            = var.location
@@ -277,7 +209,67 @@ resource "azurerm_container_group" "aci" {
   }
 }
 
+#################################
+# POSTGRES FLEXIBLE SERVER
+#################################
+resource "azurerm_subnet" "psql" {
+  name                 = "psql-subnet"
+  resource_group_name  = var.resource_group_name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.3.0/24"]
+  delegation {
+    name = "psql"
+    service_delegation {
+      name = "Microsoft.DBforPostgreSQL/flexibleServers"
+    }
+  }
+}
 
+resource "azurerm_postgresql_flexible_server" "psql" {
+  name                   = "employee-psql"
+  resource_group_name    = var.resource_group_name
+  location               = var.location
+  version                = "16"
+  delegated_subnet_id    = azurerm_subnet.psql.id
+  administrator_login    = "pgadmin"
+  administrator_password = "Password@123!"
+  sku_name               = "B_Standard_B1ms"
+  storage_mb             = 32768
 
+  tags = {
+    "Business Unit" = "IT"
+    "Cost Center"   = "1234"
+  }
+}
 
+resource "azurerm_postgresql_flexible_server_database" "employee_db" {
+  name      = "employee"
+  server_id = azurerm_postgresql_flexible_server.psql.id
+  charset   = "UTF8"
+  collation = "en_US.utf8"
+}
 
+#################################
+# AZURE KEY VAULT
+#################################
+resource "azurerm_key_vault" "kv" {
+  name                        = "kv-devops-demo"
+  location                    = var.location
+  resource_group_name         = var.resource_group_name
+  tenant_id                   = data.azurerm_client_config.current.tenant_id
+  sku_name                    = "standard"
+  purge_protection_enabled    = true
+  soft_delete_retention_days  = 7
+
+  access_policy {
+    tenant_id = data.azurerm_client_config.current.tenant_id
+    object_id = data.azurerm_client_config.current.object_id
+
+    secret_permissions = ["Get", "Set", "List"]
+  }
+
+  tags = {
+    "Business Unit" = "IT"
+    "Cost Center"   = "1234"
+  }
+}
