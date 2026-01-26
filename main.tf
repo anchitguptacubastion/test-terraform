@@ -88,6 +88,10 @@ resource "azurerm_policy_definition" "allowed_locations" {
   })
 }
 
+locals {
+  subscription_resource_id = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+}
+
 #################################
 # POLICY ASSIGNMENTS (Subscription Scope)
 #################################
@@ -95,20 +99,21 @@ resource "azurerm_policy_definition" "allowed_locations" {
 resource "azurerm_subscription_policy_assignment" "mandatory_tags" {
   name                 = "mandatory-tags-assignment"
   policy_definition_id = azurerm_policy_definition.mandatory_tags.id
-  subscription_id      = data.azurerm_client_config.current.subscription_id
+  subscription_id      = local.subscription_resource_id
 }
 
 resource "azurerm_subscription_policy_assignment" "deny_public_ip" {
   name                 = "deny-public-ip-nic-assignment"
   policy_definition_id = azurerm_policy_definition.deny_public_ip_nic.id
-  subscription_id      = data.azurerm_client_config.current.subscription_id
+  subscription_id      = local.subscription_resource_id
 }
 
 resource "azurerm_subscription_policy_assignment" "allowed_locations" {
   name                 = "allowed-locations-assignment"
   policy_definition_id = azurerm_policy_definition.allowed_locations.id
-  subscription_id      = data.azurerm_client_config.current.subscription_id
+  subscription_id      = local.subscription_resource_id
 }
+
 
 #################################
 # ACR
@@ -279,3 +284,4 @@ resource "azurerm_key_vault" "kv" {
     "Cost Center"   = "1234"
   }
 }
+
