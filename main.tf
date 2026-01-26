@@ -1,5 +1,5 @@
 #################################
-# TERRAFORM SETTINGS
+# TERRAFORM
 #################################
 terraform {
   required_version = ">= 1.3.0"
@@ -22,70 +22,38 @@ provider "azurerm" {
 data "azurerm_client_config" "current" {}
 
 locals {
-  subscription_resource_id = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+  subscription_id = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+
+  tags = {
+    "Business Unit" = "IT"
+    "Cost Center"   = "1234"
+  }
 }
 
 #################################
 # VARIABLES
 #################################
-variable "resource_group_name" {
-  description = "Existing resource group name"
-}
-
+variable "resource_group_name" {}
 variable "location" {
   default = "Central India"
 }
-
-#################################
-# POLICY DEFINITIONS
-#################################
-resource "azurerm_policy_definition" "mandatory_tags" {
-  name         = "mandatory-tags"
-  policy_type  = "Custom"
-  mode         = "Indexed"
-  display_name = "Require Business Unit and Cost Center tags"
-
-  policy_rule = jsonencode({
-    if = {
-      anyOf = [
-        { field = "tags['Business Unit']", exists = "false" },
-        { field = "tags['Cost Center']", exists = "false" }
-      ]
-    }
-    then = { effect = "deny" }
-  })
+variable "psql_admin_password" {
+  sensitive = true
 }
 
-resource "azurerm_policy_definition" "deny_public_ip_nic" {
-  name         = "deny-public-ip-nic"
-  policy_type  = "Custom"
-  mode         = "All"
-  display_name = "Deny Public IP on NIC"
-
-  policy_rule = jsonencode({
-    if = {
-      allOf = [
-        { field = "type", equals = "Microsoft.Network/networkInterfaces" },
-        { field = "Microsoft.Network/networkInterfaces/ipConfigurations[*].publicIpAddress.id", exists = "true" }
-      ]
-    }
-    then = { effect = "deny" }
-  })
+#################################
+# EXISTING POLICIES (DATA ONLY)
+#################################
+data "azurerm_policy_definition" "mandatory_tags" {
+  name = "mandatory-tags"
 }
 
-resource "azurerm_policy_definition" "allowed_locations" {
-  name         = "allowed-locations"
-  policy_type  = "Custom"
-  mode         = "All"
-  display_name = "Allowed Locations Policy"
+data "azurerm_policy_definition" "deny_public_ip_nic" {
+  name = "deny-public-ip-nic"
+}
 
-  policy_rule = jsonencode({
-    if = {
-      field = "location"
-      notIn = ["Central India", "South India"]
-    }
-    then = { effect = "deny" }
-  })
+data "azurerm_policy_definition" "allowed_locations" {
+  name = "allowed-locations"
 }
 
 #################################
@@ -93,20 +61,20 @@ resource "azurerm_policy_definition" "allowed_locations" {
 #################################
 resource "azurerm_subscription_policy_assignment" "mandatory_tags" {
   name                 = "mandatory-tags-assignment"
-  policy_definition_id = azurerm_policy_definition.mandatory_tags.id
-  subscription_id      = local.subscription_resource_id
+  policy_definition_id = data.azurerm_policy_definition.mandatory_tags.id
+  subscription_id      = local.subscription_id
 }
 
 resource "azurerm_subscription_policy_assignment" "deny_public_ip" {
   name                 = "deny-public-ip-nic-assignment"
-  policy_definition_id = azurerm_policy_definition.deny_public_ip_nic.id
-  subscription_id      = local.subscription_resource_id
+  policy_definition_id = data.azurerm_policy_definition.deny_public_ip_nic.id
+  subscription_id      = local.subscription_id
 }
 
 resource "azurerm_subscription_policy_assignment" "allowed_locations" {
   name                 = "allowed-locations-assignment"
-  policy_definition_id = azurerm_policy_definition.allowed_locations.id
-  subscription_id      = local.subscription_resource_id
+  policy_definition_id = data.azurerm_policy_definition.allowed_locations.id
+  subscription_id      = local.subscription_id
 }
 
 #################################
@@ -118,16 +86,18 @@ resource "azurerm_container_registry" "acr" {
   location            = var.location
   sku                 = "Premium"
   admin_enabled       = false
+  tags                = local.tags
 }
 
 #################################
-# NETWORKING
+# NETWORK
 #################################
 resource "azurerm_virtual_network" "vnet" {
   name                = "core-vnet"
   location            = var.location
   resource_group_name = var.resource_group_name
   address_space       = ["10.0.0.0/16"]
+  tags                = local.tags
 }
 
 resource "azurerm_subnet" "aks" {
@@ -166,11 +136,12 @@ resource "azurerm_subnet" "psql" {
 }
 
 #################################
-# PRIVATE DNS FOR POSTGRES
+# PRIVATE DNS
 #################################
 resource "azurerm_private_dns_zone" "psql" {
   name                = "privatelink.postgres.database.azure.com"
   resource_group_name = var.resource_group_name
+  tags                = local.tags
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "psql" {
@@ -206,6 +177,8 @@ resource "azurerm_kubernetes_cluster" "aks" {
     service_cidr   = "10.1.0.0/16"
     dns_service_ip = "10.1.0.10"
   }
+
+  tags = local.tags
 }
 
 #################################
@@ -218,6 +191,7 @@ resource "azurerm_container_group" "aci" {
   ip_address_type     = "Private"
   os_type             = "Linux"
   subnet_ids          = [azurerm_subnet.aci.id]
+  tags                = local.tags
 
   container {
     name   = "employee"
@@ -233,7 +207,7 @@ resource "azurerm_container_group" "aci" {
 }
 
 #################################
-# POSTGRESQL FLEXIBLE SERVER
+# POSTGRES
 #################################
 resource "azurerm_postgresql_flexible_server" "psql" {
   name                   = "employee-psql"
@@ -243,16 +217,15 @@ resource "azurerm_postgresql_flexible_server" "psql" {
   delegated_subnet_id    = azurerm_subnet.psql.id
   private_dns_zone_id    = azurerm_private_dns_zone.psql.id
   administrator_login    = "pgadmin"
-  administrator_password = "Password@123!"
+  administrator_password = var.psql_admin_password
   sku_name               = "B_Standard_B1ms"
   storage_mb             = 32768
+  tags                   = local.tags
 }
 
 resource "azurerm_postgresql_flexible_server_database" "employee_db" {
   name      = "employee"
   server_id = azurerm_postgresql_flexible_server.psql.id
-  charset   = "UTF8"
-  collation = "en_US.utf8"
 }
 
 #################################
@@ -266,6 +239,7 @@ resource "azurerm_key_vault" "kv" {
   sku_name                    = "standard"
   purge_protection_enabled    = true
   soft_delete_retention_days  = 7
+  tags                        = local.tags
 
   access_policy {
     tenant_id = data.azurerm_client_config.current.tenant_id
